@@ -75,44 +75,106 @@ app.get("/participants", (req, res) => {
     db.collection("registeredUsers").find({}).toArray().then(users => res.send(users));
 });
 
+app.post("/messages", async (req, res) => {
+    const { to, text, type } = req.body;
+    const { user } = req.headers;
+    const time = dayjs().format('hh:mm:ss');
+    let participant;
 
-
-
-app.post("/messages", (req, res) => {
-    const body = req.body;
-
-    const datasMessage = {
-        to: body.to,
-        text: body.text,
-        type: body.type
-    };
-    const promise = db.collection("messages").insertOne(datasMessage);
-    promise.then(() => {
-        res.sendStatus(201);
+    const listUsers = await db.collection("registeredUsers").find({}).toArray();
+    listUsers.map(obj => {
+        if(obj.name === user) participant = user;
     });
-    promise.catch(e => {
-        res.sendStatus(500);
-    })
+
+    const message = {
+        from: participant,
+        to,
+        text,
+        type,
+        time
+    }
+
+    const scheme = Joi.object().keys({
+        to: Joi.string().min(1).required(),
+        text: Joi.string().min(1).required(),
+        type: Joi.alternatives().try("message", "private_message"),
+        from: Joi.string().required(),
+        time: Joi.required()
+    });
+
+    const result = scheme.validate(message);
+    const { error } = result;
+    const valid = error == null;
+
+    if(!valid) {
+        res.status(422).send('Erro ao carregar mensagem');
+        return;
+    }
+
+    const promise = db.collection("messagesUsers").insertOne(message);
+    promise.then(() => res.sendStatus(201));
+    promise.catch(() => res.sendStatus(500));
 });
 
 app.get("/messages", (req, res) => {
-    const listaMessages = db.collection("messages").find({}).toArray();
-    res.send(listaMessages);
+    const { limit } = req.query;
+    const { user } = req.headers;
+
+    const promise = db.collection("messagesUsers").find({}).toArray();
+    promise.then((messages) => {
+        const filterMessages = messages.filter(msg => msg.to === user || msg.to === "Todos" || msg.from === user);
+
+        if(!limit) res.send(filterMessages);
+
+        if (limit) {
+            const lastMessages = filterMessages.slice(filterMessages.length - limit);
+            res.send(lastMessages);
+        }
+    });
 });
 
-app.post("/status", (req, res) => {
-    const body = req.body;
+app.post("/status", async (req, res) => {
+    const { user } = req.headers;
 
-    const datasStatus = {
-        name: body.name
-    };
-    const promise = db.collection("status").insertOne(datasStatus);
-    promise.then(() => {
-        res.sendStatus(201);
+    try {
+        const usersCollection = db.collection("registeredUsers");
+        const participant = await usersCollection.findOne({name: user});
+        
+        if(!participant) {
+            res.sendStatus(404);
+            return;
+        }
+        await usersCollection.updateOne({
+            _id: participant._id
+        }, {$set: {lastStatus: Date.now()}
     });
-    promise.catch(e => {
+    res.sendStatus(200);
+    } catch (error) {
         res.sendStatus(500);
-    })
+    }
+});
+
+setInterval(() => {
+    const now = Date.now();
+
+    const promise = db.collection("registeredUsers").find({}).toArray();
+    promise.then(users => {
+        users.map((user) => {
+            if(now - user.lastStatus > 10000) {
+                deleteUser(user)
+            };
+        });
+    });
+}, 15000);
+
+app.delete("/messages/:id", async (req, res) => {
+    const { id } = req.params;
+    const { user } = req.headers;
+    try {
+        
+    } catch (error) {
+        res.sendStatus(500);
+    }
 });
 
 app.listen(5000);
