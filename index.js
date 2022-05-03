@@ -6,11 +6,20 @@ import dayjs from "dayjs";
 import { MongoClient } from "mongodb";
 import dotenv from "dotenv";
 
-dotenv.config();
-const mongoClient = new MongoClient(process.env.MONGO_URL);
 const app = express();
 app.use(json());
 app.use(cors());
+dotenv.config();
+
+let database = null;
+const mongoClient = new MongoClient(process.env.MONGO_URI);
+const promise = mongoClient.connect();
+promise.then(() => {
+    database = mongoClient.db("batepapo-uol");
+    console.log(chalk.bold.green("Sua conexão com o banco de dados está de pé"));
+});
+promise.catch(e => console.log(chalk.bold.red("O banco de dados não aceitou sua conexão"), e));
+
 
 app.post("/participants", (req, res) => {
     const body = req.body;
